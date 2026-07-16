@@ -61,52 +61,131 @@ function initReveal(){
   els.forEach(el => io.observe(el));
 }
 
-/* ---------- 4. The "Nggak" button that runs away ---------- */
+/* ---------- 4. The "Nggak" button that dodges the cursor ---------- */
 const btnNo   = document.getElementById('btnNo');
 const btnYes  = document.getElementById('btnYes');
 const noTexts = [
   'Nggak ah',
-  'Beneran nggak',
-  'Yakin nggak',
+  'Ih, jangan',
   'Coba pikir lagi',
+  'Beneran nggak',
+  'Yakin nih',
   'Hmm… nggak',
-  'Duh, nggak deh',
+  'Aduh, nggak deh',
+  'Kejar aku dulu',
+  'Susah loh mau nggak',
   'Ya udah iya deh…',
 ];
 let noCount = 0;
+let lastDodge = 0;
+let dodgeActive = false;
 
-function moveNoButton(){
-  const pad = 20;
+function moveNoAway(cx, cy){
+  const pad = 12;
   const rect = btnNo.getBoundingClientRect();
-  const container = document.querySelector('.ask-buttons').getBoundingClientRect();
+  const bx = rect.left + rect.width  / 2;
+  const by = rect.top  + rect.height / 2;
 
-  // Move within viewport
+  // Direction away from the cursor
+  let dx = bx - cx;
+  let dy = by - cy;
+  let dist = Math.hypot(dx, dy) || 1;
+  dx /= dist; dy /= dist;
+
+  // Big shove + a little randomness so it feels alive
+  const shove = 160 + Math.random() * 90;
+  let nx = bx + dx * shove + (Math.random() - .5) * 60 - rect.width  / 2;
+  let ny = by + dy * shove + (Math.random() - .5) * 60 - rect.height / 2;
+
+  // Keep it visible on screen
   const maxX = window.innerWidth  - rect.width  - pad;
   const maxY = window.innerHeight - rect.height - pad;
+  // If the shove would push it off screen, bounce back the other way
+  if(nx < pad || nx > maxX){ nx = bx - dx * shove - rect.width  / 2; }
+  if(ny < pad || ny > maxY){ ny = by - dy * shove - rect.height / 2; }
+  nx = Math.max(pad, Math.min(maxX, nx));
+  ny = Math.max(pad, Math.min(maxY, ny));
 
-  const nx = Math.max(pad, Math.min(maxX, Math.random()*maxX));
-  const ny = Math.max(pad, Math.min(maxY, Math.random()*maxY));
+  btnNo.style.position  = 'fixed';
+  btnNo.style.left      = nx + 'px';
+  btnNo.style.top       = ny + 'px';
+  btnNo.style.transform = 'rotate(' + (Math.random() * 24 - 12) + 'deg)';
 
-  btnNo.style.position = 'fixed';
-  btnNo.style.left = nx + 'px';
-  btnNo.style.top  = ny + 'px';
-  btnNo.style.transform = 'rotate(' + (Math.random()*30 - 15) + 'deg)';
+  bumpCounter();
+}
+
+function bumpCounter(){
+  const now = performance.now();
+  if(now - lastDodge < 350) return;   // throttle text/growth changes
+  lastDodge = now;
 
   noCount++;
   if(noCount < noTexts.length){
     btnNo.textContent = noTexts[noCount];
   }
-  // Grow the Yes
   if(noCount <= 5){
     btnYes.classList.remove('grow-1','grow-2','grow-3','grow-4','grow-5');
-    btnYes.classList.add('grow-' + noCount);
+    btnYes.classList.add('grow-' + Math.min(noCount, 5));
   }
 }
 
-btnNo?.addEventListener('mouseenter', moveNoButton);
-btnNo?.addEventListener('focus', moveNoButton);
-btnNo?.addEventListener('touchstart', (e) => { e.preventDefault(); moveNoButton(); }, {passive:false});
-btnNo?.addEventListener('click', (e) => { e.preventDefault(); moveNoButton(); });
+// Dodge whenever the cursor gets close
+function proximityCheck(e){
+  if(!btnNo) return;
+  const rect = btnNo.getBoundingClientRect();
+  const bx = rect.left + rect.width  / 2;
+  const by = rect.top  + rect.height / 2;
+  const d  = Math.hypot(e.clientX - bx, e.clientY - by);
+
+  // Bigger sensing radius once it starts running
+  const threshold = dodgeActive ? 130 : 80;
+
+  if(d < threshold){
+    dodgeActive = true;
+    moveNoAway(e.clientX, e.clientY);
+  }
+}
+
+document.addEventListener('mousemove', proximityCheck);
+
+// Touch: dodge on tap
+btnNo?.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const t = e.touches[0] || e.changedTouches[0];
+  moveNoAway(t.clientX, t.clientY);
+}, { passive:false });
+
+// If they somehow catch it, still don't count as "no"
+btnNo?.addEventListener('click', (e) => {
+  e.preventDefault();
+  const r = btnNo.getBoundingClientRect();
+  moveNoAway(r.left + r.width/2, r.top + r.height/2);
+});
+
+// Occasional random wiggle so it visibly "moves around" even without cursor
+setInterval(() => {
+  if(!btnNo || !dodgeActive) return;
+  const r = btnNo.getBoundingClientRect();
+  // Fake a cursor coming from a random side
+  const side = Math.floor(Math.random()*4);
+  let fx, fy;
+  if(side === 0){ fx = r.left - 40; fy = r.top + r.height/2; }
+  else if(side === 1){ fx = r.right + 40; fy = r.top + r.height/2; }
+  else if(side === 2){ fx = r.left + r.width/2; fy = r.top - 40; }
+  else               { fx = r.left + r.width/2; fy = r.bottom + 40; }
+  moveNoAway(fx, fy);
+}, 1800);
+
+// Keep it inside the viewport on resize
+window.addEventListener('resize', () => {
+  if(!dodgeActive) return;
+  const r = btnNo.getBoundingClientRect();
+  const pad = 12;
+  const nx = Math.max(pad, Math.min(window.innerWidth  - r.width  - pad, r.left));
+  const ny = Math.max(pad, Math.min(window.innerHeight - r.height - pad, r.top));
+  btnNo.style.left = nx + 'px';
+  btnNo.style.top  = ny + 'px';
+});
 
 /* ---------- 5. Yes → sparkles + reveal final ---------- */
 const finalScene = document.getElementById('finalScene');
